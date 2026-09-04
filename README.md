@@ -16,7 +16,9 @@ compare them.
 
 See [`docs/method.md`](docs/method.md) for the full method description,
 the comparison methodology (purity/smear as an "did the abstraction erase
-something important" metric), and the pilot results.
+something important" metric), and the single-log pilot results, and
+[`docs/multi_log_results.md`](docs/multi_log_results.md) for the 10-log
+(5 collision + 5 non-collision) reproduction and its updated conclusions.
 
 ## Installation
 
@@ -48,6 +50,10 @@ python3 -m logverify.compare_safety_model_abstractions
 python3 -m logverify.visualize_five_abstractions       # box-sequence figures
 python3 -m logverify.plot_five_abstractions_summary    # box-count chart
 python3 -m logverify.plot_five_abstractions_purity     # purity/smear chart
+
+# 10-log (5 collision + 5 non-collision) reproduction:
+python3 -m logverify.multi_log_five_abstractions       # collects out_gif/multi_log_five_abstractions/results.csv
+python3 -m logverify.plot_multi_log_five_abstractions  # aggregate charts + summary table
 ```
 
 Figures are written to `out_gif/` (git-ignored; regenerate as needed).
@@ -65,9 +71,12 @@ logverify/
   grid_bridge.py               Frame-sequence -> grid box-state compression
   multi_log_model.py, membership.py   CPD model / Z3 membership-check infra
   compare_safety_model_abstractions.py   Metric-grid variant comparison
-  visualize_five_abstractions.py         5-variant box-sequence figures
-  plot_five_abstractions_summary.py      Box-count comparison chart
-  plot_five_abstractions_purity.py       Purity/smear comparison chart
+  visualize_five_abstractions.py         5-variant box-sequence figures (single-log pilot)
+  plot_five_abstractions_summary.py      Box-count comparison chart (single-log pilot)
+  plot_five_abstractions_purity.py       Purity/smear comparison chart (single-log pilot)
+  multi_log_five_abstractions.py         10-log 5-variant comparison (box count, purity, Z3 cost)
+  plot_multi_log_five_abstractions.py    Aggregate charts + summary table for the 10-log run
+  _z3_timing_worker.py                   Subprocess worker used to time/timeout each Z3 membership check
   scenario_snapshot_diagram.py, model_diagram.py   Plotting primitives
   reference_model_comparison.py, synth_thresholds_multilog.py   Supporting analysis
   batch_jama_cc_analysis.py, demo_jama_cc_snapshot.py, demo_scenario_snapshot.py   Demos/batch scripts

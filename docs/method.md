@@ -147,18 +147,28 @@ Key findings:
 
 ## 6. Limitations / future work
 
-- Single-log pilot (`TD-NI-AR-SD-N04-CI-0067`). Reproducing this
-  comparison across a larger log set is the natural next step.
+- ~~Single-log pilot~~ **Update:** the comparison has since been reproduced
+  across 10 logs (5 collision + 5 non-collision, the same selection as an
+  earlier 12.24-era batch analysis). See
+  [`docs/multi_log_results.md`](multi_log_results.md) for the full results.
+  The headline correction: predicate abstraction's purity guarantee holds
+  unconditionally (100% pure at its own onset across all 10 logs), but its
+  *compactness* is conditional — it stays compact (9-15 boxes) only on logs
+  where the safety model's risk-detection window is short; on logs with a
+  long near-range dwell time or heavy lateral movement, it grows as large
+  as (or larger than) the metric-grid variants (up to 266 boxes).
 - The C&C predicate abstraction's `RISK` state currently splits into
-  9 lane buckets (`lane_k`); this may be over-fragmented since no
-  hysteresis is applied to the lateral grid.
+  lane buckets (`lane_k`) via a naive grid (`grid_index_centered`), with no
+  hysteresis applied — this is the one part of the construction that is not
+  itself safety-model-guided, and is the leading suspect for the
+  compactness blow-up observed on some logs (see
+  `docs/multi_log_results.md` section 5).
 - The RSS model implements only the longitudinal formula; the lateral
   (merge) formula is not yet implemented.
-- Scalability (Z3 membership-check cost) is known to scale with box
-  count (a related finding from an earlier, broader batch analysis);
-  predicate abstraction's much smaller box count is expected to be
-  substantially cheaper, but this has not yet been measured directly in
-  this repository.
+- Scalability (Z3 membership-check cost) has now been measured directly
+  (`docs/multi_log_results.md` section 3): cost tracks box count, not
+  abstraction method — predicate abstraction is only cheaper on the logs
+  where it stays compact.
 
 ## 7. Implementation map
 
@@ -173,5 +183,7 @@ Key findings:
 | `logverify/visualize_five_abstractions.py` | Box-sequence (scenario-style) figures for variants 1-5 |
 | `logverify/plot_five_abstractions_summary.py` | Box-count bar chart across variants 1-5 |
 | `logverify/plot_five_abstractions_purity.py` | Purity/smear bar chart across variants 1-5 |
+| `logverify/multi_log_five_abstractions.py` | 10-log reproduction: box count, purity, Z3 membership-check cost per variant per log |
+| `logverify/plot_multi_log_five_abstractions.py` | Aggregate charts/summary table for the 10-log reproduction (see `docs/multi_log_results.md`) |
 | `logverify/multi_log_model.py`, `logverify/membership.py` | Underlying CPD model / Z3 membership-check infrastructure used by the above |
 | `gcpd.py` | Core CPD (Car Position Diagram) model |
