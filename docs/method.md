@@ -29,6 +29,22 @@ safety model's own predicates, not from a position bucketed by a
 distance-based cell size. It is implemented in
 `logverify/safety_predicate_abstraction.py`.
 
+**Both axes need the "far" collapse (Section 12.26 correction).** The
+first implementation applied point 2 above only to the longitudinal axis
+(`rx`, via a `near_rx` threshold): beyond it, everything collapsed into a
+single `FAR` box. The lateral axis (`ry`) had no such bound — its
+fine-grained `lane_k` bucket index was computed unconditionally, with no
+upper limit. On most logs this was harmless (`ry` stays small), but on a
+few logs `ry` swings widely while `rx` stays within `near_rx`, and
+`lane_k` diverges into the hundreds, defeating the whole point of the
+abstraction (see `docs/multi_log_results.md` for the concrete case that
+surfaced this). The fix is symmetric: introduce a `near_ry` threshold
+(the same `auto_near_range_from_risk_frame` derivation used for
+`near_rx`, applied to the `ry` series instead) and collapse `|ry| >
+near_ry` into the same single `FAR` box, exactly like `|rx| > near_rx`.
+`cc_predicate_label_fn`/`rss_predicate_label_fn` take this as an optional
+`near_ry` parameter (`None` reproduces the old, ry-unbounded behavior).
+
 ## 2. Two driver/safety models compared
 
 - **JAMA C&C (Competent and Careful) driver model**
@@ -151,24 +167,27 @@ Key findings:
   across 10 logs (5 collision + 5 non-collision, the same selection as an
   earlier 12.24-era batch analysis). See
   [`docs/multi_log_results.md`](multi_log_results.md) for the full results.
-  The headline correction: predicate abstraction's purity guarantee holds
-  unconditionally (100% pure at its own onset across all 10 logs), but its
-  *compactness* is conditional — it stays compact (9-15 boxes) only on logs
-  where the safety model's risk-detection window is short; on logs with a
-  long near-range dwell time or heavy lateral movement, it grows as large
-  as (or larger than) the metric-grid variants (up to 266 boxes).
-- The C&C predicate abstraction's `RISK` state currently splits into
-  lane buckets (`lane_k`) via a naive grid (`grid_index_centered`), with no
-  hysteresis applied — this is the one part of the construction that is not
-  itself safety-model-guided, and is the leading suspect for the
-  compactness blow-up observed on some logs (see
-  `docs/multi_log_results.md` section 5).
+- ~~The C&C predicate abstraction's `RISK` state currently splits into lane
+  buckets (`lane_k`) via a naive grid, with no bound on the lateral axis —
+  this was the cause of a box-count blow-up (up to 266 boxes) on several of
+  the 10 logs.~~ **Resolved (Section 12.26):** introducing a `near_ry`
+  threshold, collapsing `|ry| > near_ry` into the same single `FAR` box
+  used for `|rx| > near_rx`, fixes this unconditionally — across all 10
+  logs the fixed construction stays in the 9-21 box range (median 12),
+  remains 100% pure at its own onset, and every Z3 membership check now
+  completes within the 10-second budget that the unfixed metric-grid and
+  original predicate-abstraction variants routinely exceeded. See
+  `docs/multi_log_results.md` section 6 for the before/after comparison.
+  `RISK`/`VIOLATION` labels still have no lateral hysteresis, so a small
+  oscillation right at a `lane_k` boundary can still create extra runs
+  (not extra *boxes*, since revisits reuse the same box id) — a residual,
+  much smaller-impact item for future work.
 - The RSS model implements only the longitudinal formula; the lateral
   (merge) formula is not yet implemented.
 - Scalability (Z3 membership-check cost) has now been measured directly
-  (`docs/multi_log_results.md` section 3): cost tracks box count, not
-  abstraction method — predicate abstraction is only cheaper on the logs
-  where it stays compact.
+  (`docs/multi_log_results.md` sections 3 and 6): cost tracks box count,
+  not abstraction method — with the `near_ry` fix, predicate abstraction
+  is now cheap unconditionally across all 10 logs.
 
 ## 7. Implementation map
 
@@ -183,7 +202,8 @@ Key findings:
 | `logverify/visualize_five_abstractions.py` | Box-sequence (scenario-style) figures for variants 1-5 |
 | `logverify/plot_five_abstractions_summary.py` | Box-count bar chart across variants 1-5 |
 | `logverify/plot_five_abstractions_purity.py` | Purity/smear bar chart across variants 1-5 |
-| `logverify/multi_log_five_abstractions.py` | 10-log reproduction: box count, purity, Z3 membership-check cost per variant per log |
+| `logverify/multi_log_five_abstractions.py` | 10-log reproduction: box count, purity, Z3 membership-check cost per variant per log (variants (3b)/(4b) apply the `near_ry` fix) |
 | `logverify/plot_multi_log_five_abstractions.py` | Aggregate charts/summary table for the 10-log reproduction (see `docs/multi_log_results.md`) |
+| `logverify/visualize_blown_up_case.py` | Before/after box-sequence figure for the `near_ry` fix on log 0071 (266 -> 12 boxes) |
 | `logverify/multi_log_model.py`, `logverify/membership.py` | Underlying CPD model / Z3 membership-check infrastructure used by the above |
 | `gcpd.py` | Core CPD (Car Position Diagram) model |

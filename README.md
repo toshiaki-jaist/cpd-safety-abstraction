@@ -74,8 +74,9 @@ logverify/
   visualize_five_abstractions.py         5-variant box-sequence figures (single-log pilot)
   plot_five_abstractions_summary.py      Box-count comparison chart (single-log pilot)
   plot_five_abstractions_purity.py       Purity/smear comparison chart (single-log pilot)
-  multi_log_five_abstractions.py         10-log 5-variant comparison (box count, purity, Z3 cost)
+  multi_log_five_abstractions.py         10-log 7-variant comparison (box count, purity, Z3 cost; (3b)/(4b) add the near_ry fix)
   plot_multi_log_five_abstractions.py    Aggregate charts + summary table for the 10-log run
+  visualize_blown_up_case.py             Before/after box-sequence figure for the near_ry fix (log 0071)
   _z3_timing_worker.py                   Subprocess worker used to time/timeout each Z3 membership check
   scenario_snapshot_diagram.py, model_diagram.py   Plotting primitives
   reference_model_comparison.py, synth_thresholds_multilog.py   Supporting analysis

@@ -41,6 +41,8 @@ VARIANTS = [
     "(3) JAMA C&C述語抽象化",
     "(4) RSS述語抽象化",
     "(5) 参考:C&C基準near/far格子",
+    "(3b) JAMA C&C述語抽象化+ry境界",
+    "(4b) RSS述語抽象化+ry境界",
 ]
 VARIANT_COLORS = {
     "(1) 車両物理サイズ基準": "#78909c",
@@ -48,6 +50,8 @@ VARIANT_COLORS = {
     "(3) JAMA C&C述語抽象化": "#1565c0",
     "(4) RSS述語抽象化": "#ef6c00",
     "(5) 参考:C&C基準near/far格子": "#9e9e9e",
+    "(3b) JAMA C&C述語抽象化+ry境界": "#0d47a1",
+    "(4b) RSS述語抽象化+ry境界": "#e65100",
 }
 # 「自分自身が対象とする安全性モデル」のonsetだけを見る、という
 # docs/method.mdの方針(cross-model purityは評価対象にしない)。
@@ -57,6 +61,8 @@ OWN_ONSET_SIDE = {
     "(3) JAMA C&C述語抽象化": "cc",
     "(4) RSS述語抽象化": "rss",
     "(5) 参考:C&C基準near/far格子": "cc",
+    "(3b) JAMA C&C述語抽象化+ry境界": "cc",
+    "(4b) RSS述語抽象化+ry境界": "rss",
 }
 
 
@@ -98,11 +104,13 @@ def plot_box_counts_per_log(rows, out_path=f"{OUT_DIR}/box_counts_per_log.png"):
     by_log_variant = {(r["log_id"], r["variant"]): r["n_boxes"] for r in rows}
 
     x = np.arange(len(logs))
-    w = 0.15
-    fig, ax = plt.subplots(figsize=(14, 6))
+    n_variants = len(VARIANTS)
+    w = 0.8 / n_variants
+    fig, ax = plt.subplots(figsize=(16, 6.5))
+    center = (n_variants - 1) / 2
     for i, variant in enumerate(VARIANTS):
         vals = [by_log_variant[(log, variant)] for log in logs]
-        ax.bar(x + (i - 2) * w, vals, width=w, label=variant, color=VARIANT_COLORS[variant])
+        ax.bar(x + (i - center) * w, vals, width=w, label=variant, color=VARIANT_COLORS[variant])
     ax.set_yscale("log")
     ax.set_xticks(x)
     short_labels = [l.replace("TD-NI-AR-SD-N04-CI-", "").replace(".json", "") +
@@ -110,8 +118,8 @@ def plot_box_counts_per_log(rows, out_path=f"{OUT_DIR}/box_counts_per_log.png"):
                     for l in logs]
     ax.set_xticklabels(short_labels, fontsize=8.5)
     ax.set_ylabel("真の箱数 (distinct boxes, 対数軸)")
-    ax.set_title("10ログでの真の箱数比較 (5variant)")
-    ax.legend(fontsize=8, ncol=2, loc="upper left")
+    ax.set_title("10ログでの真の箱数比較 (7variant, (3b)(4b)はry方向にも境界を導入した改善版)")
+    ax.legend(fontsize=7.5, ncol=2, loc="upper left")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -120,7 +128,7 @@ def plot_box_counts_per_log(rows, out_path=f"{OUT_DIR}/box_counts_per_log.png"):
 
 def plot_box_counts_boxplot(rows, out_path=f"{OUT_DIR}/box_counts_boxplot.png"):
     data = [[r["n_boxes"] for r in rows if r["variant"] == v] for v in VARIANTS]
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=(12, 5.5))
     bp = ax.boxplot(data, tick_labels=[v.replace("参考:", "参考:\n") for v in VARIANTS], patch_artist=True, showmeans=True)
     for patch, v in zip(bp["boxes"], VARIANTS):
         patch.set_facecolor(VARIANT_COLORS[v])
@@ -131,7 +139,7 @@ def plot_box_counts_boxplot(rows, out_path=f"{OUT_DIR}/box_counts_boxplot.png"):
     ax.set_yscale("log")
     ax.set_ylabel("真の箱数 (distinct boxes, 対数軸)")
     ax.set_title("10ログにわたる箱数の分布 (中央値・四分位範囲・各ログの値)")
-    ax.tick_params(axis="x", labelsize=8.5)
+    ax.tick_params(axis="x", labelsize=7.5, rotation=10)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -170,7 +178,7 @@ def plot_purity_summary(rows, out_path=f"{OUT_DIR}/purity_summary.png"):
         pure_rate.append(100.0 * sum(all_pures) / len(all_pures) if all_pures else 0.0)
         avg_smear_impure.append(statistics.mean(all_smears_impure) if all_smears_impure else 0.0)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 5.5))
 
     bars = ax1.bar(range(len(VARIANTS)), pure_rate, color=[VARIANT_COLORS[v] for v in VARIANTS])
     for i, (r, n) in enumerate(zip(pure_rate, n_applicable)):
@@ -198,7 +206,7 @@ def plot_purity_summary(rows, out_path=f"{OUT_DIR}/purity_summary.png"):
 
 
 def plot_z3_cost(rows, out_path=f"{OUT_DIR}/z3_cost_vs_boxes.png"):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 5.5))
 
     for v in VARIANTS:
         vr = [r for r in rows if r["variant"] == v]

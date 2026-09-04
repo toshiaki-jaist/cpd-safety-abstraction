@@ -123,6 +123,7 @@ from logverify.synth_thresholds_multilog import _load, vehicle_sizes, relative_x
 from logverify.reference_model_comparison import compute_ttc, ego_speed_series
 from logverify.jama_cc_model import find_risk_perceived_frame
 from logverify.rss_model import npc_speed_series, find_rss_risk_frame
+from logverify.auto_grid import auto_near_range_from_risk_frame
 
 from logverify.paths import LOG_0067 as LOG_PATH  # see logverify/paths.py
 
@@ -169,22 +170,41 @@ def compress_by_label(
     return runs, label_of_box
 
 
-def cc_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, risk_frame, near_rx, gy):
+def cc_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, risk_frame, near_rx, gy, near_ry=None):
     """JAMA C&Cモデル自身の状態変数（risk知覚フレームの前後・接触の有無）
-    と、near_rxの外側を単一のFAR箱に潰す、というルールで各フレームの
-    ラベルを決める。
+    と、near_rx x near_ryの外側を単一のFAR箱に潰す、というルールで各
+    フレームのラベルを決める。
+
+    12.26節の訂正: 当初はrx方向にしか「遠方への圧縮」がなく(near_rxの
+    外側だけをFARに潰す)、ry方向は`gy`幅の区間を無制限に数え続けていた。
+    そのため、|rx|は近傍にとどまったまま|ry|だけが大きく振れるログでは
+    `lane_k`が数百まで分岐し、箱数が爆発した（ログ0071・0044で実際に
+    観測: lane_k=312, 258）。`near_ry`を渡すことで、rx方向と対称に
+    ry方向にも「安全性モデルが実際に注意を払う範囲」の外側を単一のFAR箱に
+    潰す。near_ryを省略(None)した場合は従来通りry方向を無制限に扱う
+    (後方互換)。
 
     ---
     English: labels each frame using JAMA C&C's own state variables
     (before/after the risk-perceived frame, in contact or not), collapsing
-    everything outside near_rx into a single FAR box.
+    everything outside the near_rx x near_ry rectangle into a single FAR
+    box.
+
+    Section 12.26 correction: originally only the rx axis had a "collapse
+    to far" bound (near_rx); the ry axis counted `gy`-wide buckets
+    without limit. This let `lane_k` diverge into the hundreds on logs
+    where |rx| stayed near but |ry| swung widely (observed on logs 0071
+    and 0044: lane_k=312, 258), causing a box-count blow-up. Passing
+    `near_ry` applies the same "collapse what the safety model doesn't
+    attend to" treatment symmetrically to ry. Omitting it (None) keeps the
+    old unbounded-ry behavior for backward compatibility.
     """
     def label_fn(frame):
         rx, ry = rxs[frame], rys[frame]
         risk2d = max(abs(rx) / (eh_l + nh_l), abs(ry) / (eh_w + nh_w))
         if risk2d < 1.0:
             return ("CONTACT",)
-        if abs(rx) > near_rx:
+        if abs(rx) > near_rx or (near_ry is not None and abs(ry) > near_ry):
             return ("FAR",)
         lane_k = grid_index_centered(ry, gy)
         if risk_frame is not None and frame >= risk_frame:
@@ -193,19 +213,21 @@ def cc_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, risk_frame, near_rx,
     return label_fn
 
 
-def rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, risk_frame, near_rx, gy):
+def rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, risk_frame, near_rx, gy, near_ry=None):
     """RSS版。risk_frameはRSS違反(|rx|<d_min)が最初に持続するフレーム。
+    `near_ry`の意味は`cc_predicate_label_fn`と同じ（12.26節）。
 
     ---
     English: RSS counterpart. risk_frame is the first persistent RSS
-    violation frame.
+    violation frame. `near_ry` has the same meaning as in
+    `cc_predicate_label_fn` (Section 12.26).
     """
     def label_fn(frame):
         rx, ry = rxs[frame], rys[frame]
         risk2d = max(abs(rx) / (eh_l + nh_l), abs(ry) / (eh_w + nh_w))
         if risk2d < 1.0:
             return ("CONTACT",)
-        if abs(rx) > near_rx:
+        if abs(rx) > near_rx or (near_ry is not None and abs(ry) > near_ry):
             return ("FAR",)
         lane_k = grid_index_centered(ry, gy)
         if risk_frame is not None and frame >= risk_frame:
@@ -245,11 +267,16 @@ def run():
 
     gy = 0.364
     near_rx = 40.0
+    # 12.26節: ry方向にもrx方向と対称に「安全性モデルが実際に注意を払う
+    # 範囲」の外側を単一のFAR箱に潰す。near_rxと同じ関数(near_range =
+    # 1.2 x onsetフレームでの値)をry方向にも使う。
+    near_ry_cc = auto_near_range_from_risk_frame(rys, cc_risk_frame, margin_factor=1.2, default=10.0)
+    near_ry_rss = auto_near_range_from_risk_frame(rys, rss_risk_frame, margin_factor=1.2, default=10.0)
     n = len(rxs)
     valid = [rxs[i] is not None and rys[i] is not None for i in range(n)]
 
-    cc_label_fn = cc_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, cc_risk_frame, near_rx, gy)
-    rss_label_fn = rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, rss_risk_frame, near_rx, gy)
+    cc_label_fn = cc_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, cc_risk_frame, near_rx, gy, near_ry=near_ry_cc)
+    rss_label_fn = rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, rss_risk_frame, near_rx, gy, near_ry=near_ry_rss)
 
     cc_runs, cc_boxes = compress_by_label(n, valid, cc_label_fn)
     rss_runs, rss_boxes = compress_by_label(n, valid, rss_label_fn)

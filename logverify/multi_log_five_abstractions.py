@@ -217,6 +217,18 @@ def analyze_log(json_path: str, log_id: str, is_collision: bool):
                          rx_near_range=near_range5, rx_far_cell=geometry_grid.rx_far_cell)
     add_metric_grid_variant("(5) 参考:C&C基準near/far格子", g5)
 
+    # 12.26節: (3)(4)はrx方向にしか「遠方への圧縮」がなく、ry方向は無制限
+    # だった(lane_kが数百まで分岐して箱数が爆発する原因)。near_ryをrx方向と
+    # 対称に導入した版を(3b)(4b)として追加し、直接効果を比較する。
+    near_ry_cc = auto_near_range_from_risk_frame(rys, cc_risk_frame, margin_factor=1.2, default=10.0)
+    near_ry_rss = auto_near_range_from_risk_frame(rys, rss_risk_frame, margin_factor=1.2, default=10.0)
+
+    cc_fn_b = cc_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, cc_risk_frame, near_rx=40.0, gy=gy, near_ry=near_ry_cc)
+    add_predicate_variant("(3b) JAMA C&C述語抽象化+ry境界", cc_fn_b, onset_side="cc")
+
+    rss_fn_b = rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, rss_risk_frame, near_rx=40.0, gy=gy, near_ry=near_ry_rss)
+    add_predicate_variant("(4b) RSS述語抽象化+ry境界", rss_fn_b, onset_side="rss")
+
     return results
 
 
