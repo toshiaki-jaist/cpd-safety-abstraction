@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# Generated figures (reproducible from the scripts; not checked in)
+out_gif/
+
+# AJISAI dataset log files (obtained separately; see data/README.md)
+data/*.json
+data/**/*.json
