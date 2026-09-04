@@ -263,7 +263,7 @@ def run():
     ttcs = compute_ttc(rxs, timestamps, eh_l, nh_l)
 
     cc_risk_frame, _, _ = find_risk_perceived_frame(rxs, rys, ttcs, eh_w, nh_w)
-    rss_risk_frame, _ = find_rss_risk_frame(rxs, ego_speed, npc_speed)
+    rss_risk_frame, _ = find_rss_risk_frame(rxs, rys, timestamps, ego_speed, npc_speed)
 
     gy = 0.364
     near_rx = 40.0

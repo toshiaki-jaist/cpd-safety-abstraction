@@ -67,10 +67,43 @@ near_ry` into the same single `FAR` box, exactly like `|rx| > near_rx`.
 
   with rho=1.0s, a_max_accel=2.0 m/s^2, b_min=4.0 m/s^2, b_max=8.0 m/s^2
   (illustrative parameter values from Shalev-Shwartz et al., 2017,
-  arXiv:1708.06374). Only the longitudinal formula is implemented; the
-  lateral (merge) formula is future work. Onset-finding uses the same
-  persistence-filtered structure as the C&C model
-  (`_first_persistent_trigger`, reused from `jama_cc_model.py`).
+  arXiv:1708.06374). Onset-finding uses the same persistence-filtered
+  structure as the C&C model (`_first_persistent_trigger`, reused from
+  `jama_cc_model.py`).
+
+  **Lateral formula (Section 12.27 addition).** The paper's Definition 6 /
+  Lemma 4 (lateral minimum safe distance) is now also implemented:
+
+  ```
+  d_min,lat = mu + [ (v1+v1,rho)/2*rho + v1,rho^2/(2*a_lat_min_brake)
+                      - ( (v2+v2,rho)/2*rho - v2,rho^2/(2*a_lat_min_brake) ) ]_+
+  ```
+
+  with `v1,rho = v1 + rho*a_lat_max_accel`, `v2,rho = v2 - rho*a_lat_max_accel`,
+  applied symmetrically to both vehicles (unlike the longitudinal formula,
+  which is asymmetric between the committed-braking rear car and the
+  worst-case-braking front car). Cars are ordered along the shared lateral
+  axis; car 1 is the one at the smaller coordinate. This project's
+  ego-centered `ry` frame treats ego as fixed at `ry=0`, lateral velocity
+  0, and derives the NPC's lateral velocity from a centered finite
+  difference of `ry` over time (mirroring
+  `demo_scenario_snapshot.lateral_speed_at`); the sign of `ry` decides
+  which car is car 1 vs. car 2, mirroring how the longitudinal formula
+  decides rear vs. front from the sign of `rx`. An RSS violation is now
+  "longitudinal violation (`|rx| < d_min,lon`) OR lateral violation
+  (`|ry| < d_min,lat`)", mirroring how JAMA C&C combines its lateral and
+  TTC boundaries via whichever triggers first. Default lateral parameters
+  (rho=1.0s, a_lat_max_accel=0.2 m/s^2, a_lat_min_brake=0.8 m/s^2,
+  mu=0.1m) are illustrative example values from Intel's public
+  `ad-rss-lib` "Parameter Discussion" documentation, since the RSS paper
+  itself gives no concrete numeric example for the lateral parameters. On
+  the 10-log set this addition did not change any onset frame or
+  downstream box-count/purity/Z3-cost result -- on every log tried so far
+  the longitudinal violation triggers first or simultaneously with any
+  lateral violation. See `docs/multi_log_results.md` section 7 for the
+  full account, including why this is not evidence the lateral formula is
+  unnecessary in general (it may matter on logs with a genuine lateral
+  cut-in/merge geometry that these particular 10 logs don't exercise).
 
 Both models' onset frames are genuinely different quantities, not just
 different numbers: on the pilot log (AJISAI `TD-NI-AR-SD-N04-CI-0067`),
@@ -182,8 +215,14 @@ Key findings:
   oscillation right at a `lane_k` boundary can still create extra runs
   (not extra *boxes*, since revisits reuse the same box id) — a residual,
   much smaller-impact item for future work.
-- The RSS model implements only the longitudinal formula; the lateral
-  (merge) formula is not yet implemented.
+- ~~The RSS model implements only the longitudinal formula; the lateral
+  (merge) formula is not yet implemented.~~ **Resolved (Section 12.27):**
+  the lateral formula (Definition 6 / Lemma 4) is now implemented; see
+  Section 2 above and `docs/multi_log_results.md` section 7. On the
+  current 10-log set it made no measurable difference (longitudinal
+  violation always triggers first or simultaneously), which is a property
+  of these particular logs' geometry, not a demonstration that the
+  lateral formula is unneeded in general.
 - Scalability (Z3 membership-check cost) has now been measured directly
   (`docs/multi_log_results.md` sections 3 and 6): cost tracks box count,
   not abstraction method — with the `near_ry` fix, predicate abstraction

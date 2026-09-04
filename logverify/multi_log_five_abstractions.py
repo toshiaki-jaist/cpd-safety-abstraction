@@ -141,7 +141,7 @@ def analyze_log(json_path: str, log_id: str, is_collision: bool):
     ttcs = compute_ttc(rxs, timestamps, eh_l, nh_l)
 
     cc_risk_frame, _, _ = find_risk_perceived_frame(rxs, rys, ttcs, eh_w, nh_w)
-    rss_risk_frame, _ = find_rss_risk_frame(rxs, ego_speed, npc_speed)
+    rss_risk_frame, _ = find_rss_risk_frame(rxs, rys, timestamps, ego_speed, npc_speed)
 
     geometry_grid = auto_grid_params_from_ajisai(json_path)
     rx_extent = max(abs(v) for v in rxs if v is not None)

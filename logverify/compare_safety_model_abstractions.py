@@ -138,7 +138,7 @@ def run():
 
     # --- 各safety modelの onset frame を求める (格子とは独立) ---
     cc_risk_frame, _, _ = find_risk_perceived_frame(rxs, rys, ttcs, eh_w, nh_w)
-    rss_risk_frame, _ = find_rss_risk_frame(rxs, ego_speed, npc_speed)
+    rss_risk_frame, _ = find_rss_risk_frame(rxs, rys, timestamps, ego_speed, npc_speed)
     print(f"JAMA C&C risk-perceived frame: {cc_risk_frame}")
     print(f"RSS violation-onset frame:     {rss_risk_frame}")
     print()

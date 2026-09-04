@@ -65,7 +65,7 @@ gcpd.py                    Core CPD (Car Position Diagram) model
 logverify/
   paths.py                 AJISAI log file path resolution (SGCPD_DATA_DIR)
   jama_cc_model.py          JAMA C&C driver/safety model
-  rss_model.py               RSS (longitudinal) safety model
+  rss_model.py               RSS safety model (longitudinal + lateral)
   safety_predicate_abstraction.py   Predicate abstraction (the core method)
   auto_grid.py                Metric-grid parameter derivation / grid search
   grid_bridge.py               Frame-sequence -> grid box-state compression
@@ -89,6 +89,6 @@ data/                        AJISAI log files go here (not bundled)
 
 ## Status
 
-Single-log pilot evaluation (AJISAI `TD-NI-AR-SD-N04-CI-0067`); see
-`docs/method.md` section 6 for current limitations and next steps
-(multi-log reproduction, RSS lateral formula, scalability measurement).
+Single-log pilot evaluation (AJISAI `TD-NI-AR-SD-N04-CI-0067`), reproduced
+across a 10-log set; see `docs/multi_log_results.md` for the full results
+and `docs/method.md` section 6 for current limitations and next steps.
