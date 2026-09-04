@@ -236,6 +236,43 @@ def rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, risk_frame, near_rx
     return label_fn
 
 
+def combined_predicate_label_fn(cc_label_fn, rss_label_fn):
+    """12.28節: C&CとRSS、両方の安全性モデルの述語ラベルを組にした「同時」
+    述語抽象化。ユーザーからの問い「RSSとC&Cドライバモデルの両方を考慮して
+    抽象化するとどうなるか」への回答として追加。
+
+    ラベルを`(cc_label, rss_label)`の組にすることで、C&C onsetとRSS onset
+    のどちらでも、構造上必然的にpureになる(cc_predicate_label_fnとrss_
+    predicate_label_fnのいずれかが変化すれば組も変化するため)。代わりに
+    箱数は、両方の述語が別々に区別する状態の「和」に応じて増える——
+    典型的には、2つの抽象化のうち片方のみが区別する遷移点がもう片方に
+    ないぶん、単独の述語抽象化よりも箱数は増えるが、2つの一様格子の直積
+    のような組合せ爆発にはならない(それぞれの述語自体がすでに「遠方は
+    1箱」まで潰しているため)。定量的な効果は
+    `logverify/multi_log_five_abstractions.py`の(6)で10ログにわたって
+    測定している。
+
+    ---
+    English: Section 12.28 -- a "joint" predicate abstraction combining
+    both C&C's and RSS's own predicate labels, added in response to the
+    user's question "what happens if abstraction considers both RSS and
+    the C&C driver model?" Making the label a `(cc_label, rss_label)`
+    pair makes the joint abstraction pure at BOTH the C&C onset and the
+    RSS onset by construction (since either sub-label changing changes
+    the pair). In exchange, the box count grows to roughly the "union"
+    of the two individual predicate abstractions' distinctions --
+    typically more boxes than either one alone (whichever transitions
+    only one of the two abstractions makes get added), but not a full
+    combinatorial product (each sub-predicate has already collapsed
+    "far away" down to one label). The quantitative effect is measured
+    across the 10-log set in variant (6) of
+    `logverify/multi_log_five_abstractions.py`.
+    """
+    def label_fn(frame):
+        return (cc_label_fn(frame), rss_label_fn(frame))
+    return label_fn
+
+
 def _purity_of_predicate_abstraction(runs: List[LabelRun], onset_frame: Optional[int]) -> dict:
     """述語抽象化の場合のpurity判定（compare_safety_model_abstractions.
     _purity_for_onsetと同じ定義）。"""

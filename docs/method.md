@@ -127,6 +127,12 @@ Five abstraction variants are compared on the pilot log:
 | 4 | RSS predicate abstraction | Same as (3), using RSS's onset/contact state | **13** |
 | 5 | Reference: pre-correction C&C-guided metric grid | Only `near_range` tied to C&C's onset frame; `near_cell`/`far_cell` still vehicle-size-derived | 91 |
 
+A sixth variant, the combined C&C+RSS predicate abstraction (label =
+`(C&C label, RSS label)`), is described in `docs/multi_log_results.md`
+section 8: it is pure at both models' onsets simultaneously, at the cost
+of only 1-2 extra boxes over either single-model variant (no combinatorial
+blow-up).
+
 "True box count" is the number of *distinct* boxes
 (`len(box_id_of)`/`len(label_of_box)`), not the number of maximal
 same-box runs — `gcpd.Model` identifies a box by `(lane, position)` (or,
@@ -241,8 +247,9 @@ Key findings:
 | `logverify/visualize_five_abstractions.py` | Box-sequence (scenario-style) figures for variants 1-5 |
 | `logverify/plot_five_abstractions_summary.py` | Box-count bar chart across variants 1-5 |
 | `logverify/plot_five_abstractions_purity.py` | Purity/smear bar chart across variants 1-5 |
-| `logverify/multi_log_five_abstractions.py` | 10-log reproduction: box count, purity, Z3 membership-check cost per variant per log (variants (3b)/(4b) apply the `near_ry` fix) |
+| `logverify/multi_log_five_abstractions.py` | 10-log reproduction: box count, purity, Z3 membership-check cost per variant per log (variants (3b)/(4b) apply the `near_ry` fix; variant (6) is the combined C&C+RSS predicate abstraction, `docs/multi_log_results.md` section 8) |
 | `logverify/plot_multi_log_five_abstractions.py` | Aggregate charts/summary table for the 10-log reproduction (see `docs/multi_log_results.md`) |
+| `logverify/scenario_snapshot_diagram.py` | Per-box scenario-snapshot panel rendering, with an independent axis scale and a map-style scale bar per panel (`docs/multi_log_results.md` section 9) |
 | `logverify/visualize_blown_up_case.py` | Before/after box-sequence figure for the `near_ry` fix on log 0071 (266 -> 12 boxes) |
 | `logverify/multi_log_model.py`, `logverify/membership.py` | Underlying CPD model / Z3 membership-check infrastructure used by the above |
 | `gcpd.py` | Core CPD (Car Position Diagram) model |

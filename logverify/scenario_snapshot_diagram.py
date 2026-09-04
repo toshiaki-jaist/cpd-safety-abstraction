@@ -145,6 +145,62 @@ def _draw_velocity_arrow(ax, x0, y0, dx, dy, color, label):
     ax.text(x0 + dx * 1.12, y0 + dy * 1.12, label, fontsize=6.5, color=color, ha="center", va="center", zorder=6)
 
 
+def _nice_round(value: float) -> float:
+    """スケールバー用の「きりのいい」数値(1,2,5 x 10^n)に丸める。
+
+    ---
+    English: round to a "nice" scale-bar number (1, 2, 5 x 10^n).
+    """
+    import math
+    if value <= 0:
+        return 1.0
+    exp = math.floor(math.log10(value))
+    base = value / (10 ** exp)
+    if base < 1.5:
+        nice = 1
+    elif base < 3.5:
+        nice = 2
+    elif base < 7.5:
+        nice = 5
+    else:
+        nice = 10
+    return nice * (10 ** exp)
+
+
+def _draw_scale_bar(ax, x_min, x_max, y_min, y_max):
+    """地図の縮尺のように、そのパネル(スナップショット)が実際何メートルを
+    表しているかを示すスケールバーを左下に描く。12.28節：ユーザーからの
+    指摘「EGOとNPCがほぼ重なって見づらい場合はスケールを変えれば良い。
+    それぞれのスナップショットでどのようなスケールを使っているか書いて
+    あれば良い」を受けて追加。パネルごとに軸範囲が独立している
+    (`per_snapshot_scale=True`)前提で、そのパネル自身の軸範囲から
+    バーの長さを決める。
+
+    ---
+    English: draws a scale bar (like a map's scale) in the bottom-left of
+    the panel, showing how many meters this particular snapshot's axes
+    represent. Added per Section 12.28, following the user's suggestion:
+    when Ego and NPC nearly overlap and are hard to see, change the
+    scale per panel, and write down what scale each snapshot uses (like
+    a map's scale). Assumes each panel's axis range is independent
+    (`per_snapshot_scale=True`); the bar length is derived from that
+    panel's own axis span.
+    """
+    x_span = x_max - x_min
+    y_span = y_max - y_min
+    bar_len = _nice_round(x_span * 0.28)
+    x0 = x_min + x_span * 0.04
+    x1 = x0 + bar_len
+    y0 = y_min + y_span * 0.06
+    tick_h = y_span * 0.018
+    ax.plot([x0, x1], [y0, y0], color="black", linewidth=1.6, solid_capstyle="butt", zorder=6)
+    for x in (x0, x1):
+        ax.plot([x, x], [y0 - tick_h, y0 + tick_h], color="black", linewidth=1.6, zorder=6)
+    ax.text((x0 + x1) / 2, y0 + y_span * 0.025, f"{bar_len:g}m", ha="center", va="bottom",
+            fontsize=6.3, color="black", fontweight="bold", zorder=6,
+            bbox=dict(boxstyle="round,pad=0.15", facecolor="white", edgecolor="none", alpha=0.75))
+
+
 def _abstract_label_row(ax, y_frac, name, label, colors):
     if label is None:
         return
@@ -169,6 +225,7 @@ def plot_scenario_snapshot_sequence(
     panel_h_in: float = 3.0,
     show_time: bool = True,
     transition_arrow_style: str = "panel",
+    per_snapshot_scale: bool = True,
 ) -> str:
     """CPDの箱列(`snapshots`, 箱の順に並んでいること)を、1箱=1パネルの
     横並びスナップショット列として描画する。
@@ -205,17 +262,58 @@ def plot_scenario_snapshot_sequence(
       (in different colors). Intended for visualizing a CPD model's own
       box sequence (a gcpd.Model's ntrans) directly, where the arrow
       itself traces EGO's and NPC's paths in real coordinates.
+
+    per_snapshot_scale (12.28節で追加、デフォルトTrue): 各パネルの軸範囲を
+    そのパネル自身のEGO/NPC位置関係だけから独立に決める(Falseにすると
+    従来通り、全パネル共通の軸範囲を使う——ある1つのスナップショットで
+    EGOとNPCがほぼ重なっていても、他のパネルの広い範囲に合わせて縮小
+    表示されてしまい、見づらいという問題があった)。パネルごとに軸
+    スケールが異なりうるため、地図の縮尺のように、パネルごとに実際の
+    距離を示すスケールバーを左下に描く(`_draw_scale_bar`)。
+
+    ---
+    English: per_snapshot_scale (added Section 12.28, default True):
+    computes each panel's axis range independently from just that
+    panel's own Ego/NPC positions (set False to restore the old
+    behavior of one shared axis range across all panels, where a
+    snapshot with Ego and NPC nearly overlapping was still drawn shrunk
+    to match other panels' wider extent, making it hard to see). Since
+    panels can then have different scales, a scale bar showing the
+    actual distance represented (like a map's scale) is drawn in the
+    bottom-left of each panel (`_draw_scale_bar`).
     """
     if transition_arrow_style not in ("panel", "boxes"):
         raise ValueError(f"transition_arrow_style must be 'panel' or 'boxes', got {transition_arrow_style!r}")
     n = len(snapshots)
     assert n > 0, "snapshots must be non-empty"
 
-    all_rx = [s.rx for s in snapshots] + [s.rx_cc_ref for s in snapshots if s.rx_cc_ref is not None]
-    x_min = min(min(all_rx) - npc_half_length, -ego_half_length) - 2.0
-    x_max = max(max(all_rx) + npc_half_length, ego_half_length) + 2.0
-    y_extent = max(max(abs(s.ry) for s in snapshots) + npc_half_width, ego_half_width) + 1.4
-    y_min, y_max = -y_extent, y_extent
+    def _panel_extent(s: "ScenarioSnapshot"):
+        """1パネル分の軸範囲(x_min, x_max, y_min, y_max)を、そのスナップ
+        ショット自身のEGO/NPC位置関係だけから計算する。
+
+        ---
+        English: axis range for a single panel, computed from just that
+        snapshot's own Ego/NPC positions.
+        """
+        rx_vals = [s.rx] + ([s.rx_cc_ref] if s.rx_cc_ref is not None else [])
+        xmin = min(min(rx_vals) - npc_half_length, -ego_half_length) - 2.0
+        xmax = max(max(rx_vals) + npc_half_length, ego_half_length) + 2.0
+        yext = max(abs(s.ry) + npc_half_width, ego_half_width) + 1.4
+        return xmin, xmax, -yext, yext
+
+    if per_snapshot_scale:
+        panel_extents = [_panel_extent(s) for s in snapshots]
+    else:
+        # 従来通り、全パネル共通の軸範囲(12.27節までのデフォルト)。
+        # ---
+        # English: the old behavior -- one shared axis range across all
+        # panels (the default through Section 12.27).
+        all_rx = [s.rx for s in snapshots] + [s.rx_cc_ref for s in snapshots if s.rx_cc_ref is not None]
+        x_min = min(min(all_rx) - npc_half_length, -ego_half_length) - 2.0
+        x_max = max(max(all_rx) + npc_half_length, ego_half_length) + 2.0
+        y_extent = max(max(abs(s.ry) for s in snapshots) + npc_half_width, ego_half_width) + 1.4
+        y_min, y_max = -y_extent, y_extent
+        panel_extents = [(x_min, x_max, y_min, y_max)] * n
 
     label_h_in = panel_h_in * 0.30
     fig = plt.figure(figsize=(panel_w_in * n, panel_h_in + label_h_in))
@@ -226,7 +324,8 @@ def plot_scenario_snapshot_sequence(
 
     ego_rects: List[Rectangle] = []
     npc_rects: List[Rectangle] = []
-    for ax, s in zip(axes, snapshots):
+    for ax, s, (x_min, x_max, y_min, y_max) in zip(axes, snapshots, panel_extents):
+        y_extent = y_max  # 対称なので y_max = -y_min = 半範囲 / symmetric, so y_max is the half-extent
         ax.axhspan(-ego_half_width, ego_half_width, color="#c8e6c9", alpha=0.55, zorder=0)
         ax.axhline(0, color="#9e9e9e", lw=0.5, ls=":", zorder=1)
 
@@ -319,6 +418,14 @@ def plot_scenario_snapshot_sequence(
         ax.set_yticks([])
         for spine in ax.spines.values():
             spine.set_visible(False)
+
+        # 12.28節: パネルごとにスケールが異なりうるため、地図の縮尺のよう
+        # に実際の距離を示すスケールバーを描く。
+        # ---
+        # English: Section 12.28 -- since panels can have different
+        # scales, draw a scale bar showing the actual distance
+        # represented, like a map's scale.
+        _draw_scale_bar(ax, x_min, x_max, y_min, y_max)
 
         box_label = f"box #{s.box_index}"
         if s.lane_k is not None and s.pos_i is not None:

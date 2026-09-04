@@ -56,7 +56,7 @@ from logverify.auto_grid import (
 )
 from logverify.grid_bridge import compress_to_grid_states_variable_hysteresis
 from logverify.safety_predicate_abstraction import (
-    compress_by_label, cc_predicate_label_fn, rss_predicate_label_fn,
+    compress_by_label, cc_predicate_label_fn, rss_predicate_label_fn, combined_predicate_label_fn,
 )
 from logverify.compare_safety_model_abstractions import _purity_for_onset
 
@@ -167,6 +167,8 @@ def analyze_log(json_path: str, log_id: str, is_collision: bool):
         ))
 
     def add_predicate_variant(name, label_fn, onset_side: str):
+        # onset_side: "cc" | "rss" | "both"(12.28節、C&C+RSS同時述語抽象化用
+        # -- 両方のonsetに対してpurityを評価する)。
         runs, label_of_box = compress_by_label(n, valid, label_fn)
         n_boxes = len(label_of_box)
         # 述語抽象化はpurity計算を、汎用格子(GridState: .index/.start_frame/
@@ -177,8 +179,10 @@ def analyze_log(json_path: str, log_id: str, is_collision: bool):
             types.SimpleNamespace(index=r.box_id, start_frame=r.start_frame, end_frame=r.end_frame)
             for r in runs
         ]
-        cc_p = _purity_for_onset(rxs, purity_states, cc_risk_frame if onset_side == "cc" else None)
-        rss_p = _purity_for_onset(rxs, purity_states, rss_risk_frame if onset_side == "rss" else None)
+        cc_onset = cc_risk_frame if onset_side in ("cc", "both") else None
+        rss_onset = rss_risk_frame if onset_side in ("rss", "both") else None
+        cc_p = _purity_for_onset(rxs, purity_states, cc_onset)
+        rss_p = _purity_for_onset(rxs, purity_states, rss_onset)
         cc_app, cc_pure, cc_smear = _smear_fields(cc_p)
         rss_app, rss_pure, rss_smear = _smear_fields(rss_p)
         # 述語abstraction: 箱の同一性はラベル。汎用のBoxKey形式(2要素タプル)
@@ -228,6 +232,15 @@ def analyze_log(json_path: str, log_id: str, is_collision: bool):
 
     rss_fn_b = rss_predicate_label_fn(rxs, rys, eh_l, eh_w, nh_l, nh_w, rss_risk_frame, near_rx=40.0, gy=gy, near_ry=near_ry_rss)
     add_predicate_variant("(4b) RSS述語抽象化+ry境界", rss_fn_b, onset_side="rss")
+
+    # (6) 12.28節: C&C+RSS 同時述語抽象化。ユーザーからの問い「両方を考慮
+    # して抽象化するとどうなるか」への回答。ラベルを(C&C述語, RSS述語)の
+    # 組にすることで、C&C onset・RSS onsetの両方に対して構造上必然的に
+    # pureになる代わりに、箱数がどれだけ増えるかを測定する。ry境界修正済み
+    # の(3b)(4b)を組み合わせる(未修正の(3)(4)を組み合わせても、修正前の
+    # 箱数爆発をそのまま持ち込むだけで比較の意味が薄いため)。
+    combined_fn = combined_predicate_label_fn(cc_fn_b, rss_fn_b)
+    add_predicate_variant("(6) C&C+RSS同時述語抽象化", combined_fn, onset_side="both")
 
     return results
 

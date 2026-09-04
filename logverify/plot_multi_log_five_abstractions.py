@@ -43,6 +43,7 @@ VARIANTS = [
     "(5) 参考:C&C基準near/far格子",
     "(3b) JAMA C&C述語抽象化+ry境界",
     "(4b) RSS述語抽象化+ry境界",
+    "(6) C&C+RSS同時述語抽象化",
 ]
 VARIANT_COLORS = {
     "(1) 車両物理サイズ基準": "#78909c",
@@ -52,9 +53,11 @@ VARIANT_COLORS = {
     "(5) 参考:C&C基準near/far格子": "#9e9e9e",
     "(3b) JAMA C&C述語抽象化+ry境界": "#0d47a1",
     "(4b) RSS述語抽象化+ry境界": "#e65100",
+    "(6) C&C+RSS同時述語抽象化": "#6a1b9a",
 }
 # 「自分自身が対象とする安全性モデル」のonsetだけを見る、という
 # docs/method.mdの方針(cross-model purityは評価対象にしない)。
+# (6)は12.28節: C&C・RSS両方のonsetを対象とする("both")。
 OWN_ONSET_SIDE = {
     "(1) 車両物理サイズ基準": "both",
     "(2) 一様格子ベースライン": "both",
@@ -63,6 +66,7 @@ OWN_ONSET_SIDE = {
     "(5) 参考:C&C基準near/far格子": "cc",
     "(3b) JAMA C&C述語抽象化+ry境界": "cc",
     "(4b) RSS述語抽象化+ry境界": "rss",
+    "(6) C&C+RSS同時述語抽象化": "both",
 }
 
 
@@ -118,7 +122,7 @@ def plot_box_counts_per_log(rows, out_path=f"{OUT_DIR}/box_counts_per_log.png"):
                     for l in logs]
     ax.set_xticklabels(short_labels, fontsize=8.5)
     ax.set_ylabel("真の箱数 (distinct boxes, 対数軸)")
-    ax.set_title("10ログでの真の箱数比較 (7variant, (3b)(4b)はry方向にも境界を導入した改善版)")
+    ax.set_title("10ログでの真の箱数比較 (8variant, (3b)(4b)はry境界導入版, (6)はC&C+RSS同時抽象化)")
     ax.legend(fontsize=7.5, ncol=2, loc="upper left")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
