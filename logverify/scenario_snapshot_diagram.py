@@ -226,6 +226,8 @@ def plot_scenario_snapshot_sequence(
     show_time: bool = True,
     transition_arrow_style: str = "panel",
     per_snapshot_scale: bool = True,
+    label_names: tuple = ("減速", "予測", "余裕"),
+    label_colors: tuple = None,
 ) -> str:
     """CPDの箱列(`snapshots`, 箱の順に並んでいること)を、1箱=1パネルの
     横並びスナップショット列として描画する。
@@ -284,6 +286,8 @@ def plot_scenario_snapshot_sequence(
     """
     if transition_arrow_style not in ("panel", "boxes"):
         raise ValueError(f"transition_arrow_style must be 'panel' or 'boxes', got {transition_arrow_style!r}")
+    if label_colors is None:
+        label_colors = (DECEL_COLORS, PRED_COLORS, CONTACT_COLORS)
     n = len(snapshots)
     assert n > 0, "snapshots must be non-empty"
 
@@ -450,13 +454,13 @@ def plot_scenario_snapshot_sequence(
                 fontsize=8.5, fontweight="bold",
                 bbox=dict(boxstyle="round,pad=0.35", facecolor=color, edgecolor="#0d47a1", linewidth=1.8),
             )
-            _abstract_label_row(lax, 0.58, "減速", s.decel_label, DECEL_COLORS)
-            _abstract_label_row(lax, 0.33, "予測", s.pred_label, PRED_COLORS)
-            _abstract_label_row(lax, 0.08, "余裕", s.contact_label, CONTACT_COLORS)
+            _abstract_label_row(lax, 0.58, label_names[0], s.decel_label, label_colors[0])
+            _abstract_label_row(lax, 0.33, label_names[1], s.pred_label, label_colors[1])
+            _abstract_label_row(lax, 0.08, label_names[2], s.contact_label, label_colors[2])
         else:
-            _abstract_label_row(lax, 0.80, "減速", s.decel_label, DECEL_COLORS)
-            _abstract_label_row(lax, 0.47, "予測", s.pred_label, PRED_COLORS)
-            _abstract_label_row(lax, 0.14, "余裕", s.contact_label, CONTACT_COLORS)
+            _abstract_label_row(lax, 0.80, label_names[0], s.decel_label, label_colors[0])
+            _abstract_label_row(lax, 0.47, label_names[1], s.pred_label, label_colors[1])
+            _abstract_label_row(lax, 0.14, label_names[2], s.contact_label, label_colors[2])
 
     fig.suptitle(title or "Scenario snapshot sequence (= CPD box sequence)", fontsize=12, y=0.995)
     if any(s.rx_cc_ref is not None for s in snapshots):
