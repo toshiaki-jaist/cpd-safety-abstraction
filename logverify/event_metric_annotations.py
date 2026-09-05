@@ -55,7 +55,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from logverify.synth_thresholds_multilog import _load, vehicle_sizes, relative_xy
+from logverify.synth_thresholds_multilog import (
+    _load, vehicle_sizes, relative_xy, closest_approach_frame, cutin_onset_frame,
+)
 from logverify.reference_model_comparison import (
     ego_speed_series, actual_accel_series, compute_ttc, ttc_zone,
     TTC_DANGER, TTC_CAUTION,
@@ -77,7 +79,17 @@ OUT_PATH = "out_gif/event_metric_annotations.png"
 # well below normal cruise-speed noise but well above the C&C model's
 # eventual 0.774G (7.6 m/s^2) so it fires on the *start* of braking, not
 # only once braking is already severe.
-REAL_BRAKE_ONSET_THRESHOLD = -0.5  # m/s^2
+#
+# Calibration note (log 0067): Ego's actual deceleration during the
+# critical window (risk-perceived frame 588 to the collision) never
+# exceeds about -0.5 m/s^2 -- far short of the JAMA C&C model's 0.774G
+# (~7.6 m/s^2) reference response. A -0.5 threshold therefore misses
+# Ego's real (weak) braking attempt entirely and instead only catches an
+# unrelated -0.9 m/s^2 blip at frame 53 (an initial speed-settling
+# maneuver at the very start of the log, long before the cut-in). -0.15
+# is low enough to catch Ego's real, if inadequate, response while still
+# well above sensor/control noise.
+REAL_BRAKE_ONSET_THRESHOLD = -0.15  # m/s^2
 
 # A "deceleration-change" event: a jump in the (finite-difference) jerk of
 # Ego's real acceleration exceeding this magnitude, persisting briefly.
@@ -156,22 +168,46 @@ def real_deceleration_change_frames(accel: Sequence[float], timestamps: Sequence
     return merged
 
 
-def ttc_zone_transition_frames(ttcs: Sequence[Optional[float]]) -> List[Tuple[int, str, str]]:
-    """TTCゾーン(safe/caution/danger)が変化した最初のフレームのリスト
-    (frame, from_zone, to_zone)。危険側への遷移のみを対象とする
-    (safe->caution, caution->danger)。
+def ttc_zone_transition_frames(ttcs: Sequence[Optional[float]],
+                                persist_frames: int = 3) -> List[Tuple[int, str, str]]:
+    """TTCが初めて各ゾーン(caution/danger)に持続的に到達したフレームの
+    リスト(frame, "safe", to_zone)。
+
+    12.24節で明らかになったのと同じ理由(TTCは相対速度の有限差分から
+    計算されるため単一フレームのノイズに弱い)で、素朴な「1フレーム前と
+    ゾーンが違えば遷移」という判定は同じ危険度への出入りを何十回も検出
+    してしまう(実際、この関数の前バージョンではログ0067で90件以上の
+    「悪化」を検出した——ほとんどがTTCがしきい値付近で振動しているだけの
+    ノイズだった)。`find_risk_perceived_frame`と同じ
+    `_first_persistent_trigger`のパターンを使い、「danger/cautionゾーンに
+    最初に持続的に到達した」1フレームだけを、ゾーンごとに1回だけ報告する。
 
     ---
-    English: list of (frame, from_zone, to_zone) at each first frame a TTC
-    zone worsens (safe->caution, caution->danger). Zone improvements are
-    not reported (they are not criticality milestones).
+    English: for each of the "caution"/"danger" zones, the first frame at
+    which TTC persistently reaches that zone (frame, "safe", to_zone) --
+    reported at most once per zone.
+
+    For the same reason surfaced in Section 12.24 (TTC, from a finite
+    difference of relative velocity, is fragile to single-frame noise), a
+    naive "zone differs from the previous frame" check fires dozens of
+    times as TTC oscillates near a threshold (the earlier version of this
+    function found 90+ "worsening" events on log 0067, almost all noise).
+    This reuses the same `_first_persistent_trigger` pattern as
+    `find_risk_perceived_frame` to report each zone's first persistent
+    arrival exactly once.
     """
-    zones = [ttc_zone(v) for v in ttcs]
-    order = {"safe": 0, "caution": 1, "danger": 2}
+    def reaches(zone_name):
+        order = {"safe": 0, "caution": 1, "danger": 2}
+        def pred(i):
+            v = ttcs[i]
+            return v is not None and order[ttc_zone(v)] >= order[zone_name]
+        return pred
+
     out = []
-    for i in range(1, len(zones)):
-        if order[zones[i]] > order[zones[i - 1]]:
-            out.append((i, zones[i - 1], zones[i]))
+    for zone_name in ("caution", "danger"):
+        f = _first_persistent_trigger(len(ttcs), reaches(zone_name), persist_frames)
+        if f is not None:
+            out.append((f, "safe", zone_name))
     return out
 
 
@@ -201,16 +237,27 @@ def speed_milestone_frames(ego_speed: Sequence[float], onset_frame: int) -> List
     """Ego速度の節目: カットイン開始前の巡航速度(v0)を基準に、半減・
     ほぼ停止(<1m/s)に最初に達したフレーム。
 
+    走査は`onset_frame`以降に限る。ログの冒頭は多くの場合まだ巡航速度に
+    達する前の加速区間であり、そこから素朴に0フレーム目から走査すると、
+    巡航速度に達する「前」の低速フェーズがそのまま「半減速度」「ほぼ停止」
+    として誤検出される（実際にログ0067で発生した）。
+
     ---
     English: Ego speed milestones relative to its pre-cut-in cruising speed
-    v0: first frame reaching half of v0, and first frame reaching near-stop
-    (<1 m/s).
+    v0: first frame (at or after `onset_frame`) reaching half of v0, and
+    first frame reaching near-stop (<1 m/s).
+
+    The scan starts at `onset_frame`, not frame 0: the start of a log is
+    often still in the initial acceleration-to-cruise phase, and naively
+    scanning from frame 0 misidentifies that low-speed-before-cruise phase
+    as "half speed" / "near stop" (observed in practice on log 0067).
     """
     lookback = ego_speed[max(0, onset_frame - 50):onset_frame + 1]
-    v0 = sum(lookback) / len(lookback) if lookback else ego_speed[0]
+    v0 = sum(lookback) / len(lookback) if lookback else ego_speed[onset_frame]
     out = []
     half_hit, stop_hit = False, False
-    for i, v in enumerate(ego_speed):
+    for i in range(onset_frame, len(ego_speed)):
+        v = ego_speed[i]
         if not half_hit and v < 0.5 * v0:
             out.append((i, f"半減速度(<{0.5*v0:.1f}m/s, v0={v0:.1f}m/s)"))
             half_hit = True
@@ -256,6 +303,8 @@ def run():
     accel = actual_accel_series(gk)
     ttcs = compute_ttc(rxs, timestamps, eh_l, nh_l)
     n = len(rxs)
+    closest_frame, _ = closest_approach_frame(rxs, rys, eh_l, eh_w, nh_l, nh_w)
+    cutin_frame = cutin_onset_frame(rys, closest_frame)
 
     # --- Existing safety-model onsets & predicate abstractions (unchanged) ---
     cc_risk_frame, _, _ = find_risk_perceived_frame(rxs, rys, ttcs, eh_w, nh_w)
@@ -281,7 +330,7 @@ def run():
         events.append(Event(f"TTCゾーン悪化 {frm}->{to}", f, "criticality_metric"))
     for f, m in distance_milestone_frames(rxs, eh_l + nh_l):
         events.append(Event(f"距離節目 <{m:.0f}m", f, "criticality_metric"))
-    for f, label in speed_milestone_frames(ego_speed, brake_frame or 0):
+    for f, label in speed_milestone_frames(ego_speed, cutin_frame):
         events.append(Event(f"速度節目 {label}", f, "criticality_metric"))
     events.sort(key=lambda e: e.frame)
 
